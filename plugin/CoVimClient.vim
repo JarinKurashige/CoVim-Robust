@@ -51,12 +51,38 @@ CoVimServerPath = vim.eval('expand("<sfile>:h")') + '/CoVimServer.py'
 class CoVimProtocol(Protocol):
     def __init__(self, fact):
         self.fact = fact
+        self.buffer = ""
 
     def send(self, event):
         self.transport.write(event.encode('utf-8'))
 
     def connectionMade(self):
         self.send(CoVim.username)
+
+    def are_decorators_balanced(self, data):
+        stack = []
+        pairs = {
+                ')': '(',
+                '}': '{',
+                ']': '[',
+                '<': '>',
+                '"': '"',
+                "'": "'"
+        }
+        openers = set(pairs.values())
+        quotes = {'"', "'"}
+
+        for char in data:
+            if char in openers:
+                if char in quotes and stack and stack[-1] == char:
+                    stack.pop()
+                else:
+                    stack.append(char)
+            elif char in pairs:
+                if not stack or stack[-1] != pairs[char]:
+                    return False
+                stack.pop()
+        return True if not stack else False
 
     def dataReceived(self, data_string):
         def clean_data_string(d_s):
@@ -67,6 +93,11 @@ class CoVimProtocol(Protocol):
          
         if isinstance(data_string, bytes):
             data_string = data_string.decode('utf-8')
+
+        self.buffer += data_string
+        if not self.are_decorators_balanced(self.buffer):
+          return
+
         data_string = clean_data_string(data_string)
         packet = json.loads(data_string)
         if 'packet_type' in packet.keys():
@@ -106,10 +137,13 @@ class CoVimProtocol(Protocol):
                     for updated_user in data['updated_cursors']:
                         if CoVim.username != updated_user['name']:
                             vim.command(':call matchdelete(' + str(CoVim.collab_manager.collaborators[updated_user['name']][1]) + ')')
-                            vim.command(':call matchadd(\'' + CoVim.collab_manager.collaborators[updated_user['name']][0] + '\', \'\%' + str(updated_user['cursor']['x']) + 'v.\%' + str(updated_user['cursor']['y']) + 'l\', 10, ' + str(CoVim.collab_manager.collaborators[updated_user['name']][1]) + ')')
+                            vim.command(f":call matchadd('{CoVim.collab_manager.collaborators[updated_user['name']][0]}', '\\%{updated_user['cursor']['x']}v.\\%{updated_user['cursor']['y']}l', 10, {CoVim.collab_manager.collaborators[updated_user['name']][1]})")
+
+                            #vim.command(':call matchadd(' + CoVim.collab_manager.collaborators[updated_user['name']][0] + "', '%" + str(updated_user['cursor']['x']) + 'v.\%' + str(updated_user['cursor']['y']) + "l', 10, " + str(CoVim.collab_manager.collaborators[updated_user['name']][1]) + ')')
                 #data['cursor']['x'] = max(1,data['cursor']['x'])
                 #print(str(data['cursor']['x'])+', '+str(data['cursor']['y'])
             vim.command(':redraw')
+            self.buffer = ""
 
 
 #CoVimFactory - Handles Socket Communication
@@ -210,7 +244,9 @@ class CollaboratorManager:
             self.collaborators[user_obj['name']] = ('Cursor' + str(self.collab_color_itr), self.collab_id_itr)
             self.collab_id_itr += 1
             self.collab_color_itr = (self.collab_id_itr-3) % 11
-            vim.command(':call matchadd(\''+self.collaborators[user_obj['name']][0]+'\', \'\%' + str(user_obj['cursor']['x']) + 'v.\%'+str(user_obj['cursor']['y'])+'l\', 10, ' + str(self.collaborators[user_obj['name']][1]) + ')')
+
+            vim.command(f":call matchadd('{self.collaborators[user_obj['name']][0]}', '\\%{user_obj['cursor']['x']}v.\\%{user_obj['cursor']['y']}l', 10, {self.collaborators[user_obj['name']][1]})")
+            #vim.command(':call matchadd(\''+self.collaborators[user_obj['name']][0]+'\', \'\%' + str(user_obj['cursor']['x']) + 'v.\%'+str(user_obj['cursor']['y'])+'l\', 10, ' + str(self.collaborators[user_obj['name']][1]) + ')')
         self.refreshCollabDisplay()
 
     def remUser(self, name):
@@ -236,7 +272,11 @@ class CollaboratorManager:
                 CoVim.buddylist.append('')
                 vim.command('resize '+str(line_i+1))
             CoVim.buddylist[line_i] += name+' '
-            self.buddylist_highlight_ids.append(vim.eval('matchadd(\''+self.collaborators[name][0]+'\',\'\%<'+str(x_b)+'v.\%>'+str(x_a)+'v\%'+str(line_i+1)+'l\',10,'+str(self.collaborators[name][1]+2000)+')'))
+
+            highlight_id = vim.eval(f"matchadd('{self.collaborators[name][0]}', '\\%<{x_b}v.\\%>{x_a}v\\%{line_i+1}l', 10, {self.collaborators[name][1] + 2000})")
+            self.buddylist_highlight_ids.append(highlight_id)
+
+            #self.buddylist_highlight_ids.append(vim.eval('matchadd(\''+self.collaborators[name][0]+'\',\'\%<'+str(x_b)+'v.\%>'+str(x_a)+'v\%'+str(line_i+1)+'l\',10,'+str(self.collaborators[name][1]+2000)+')'))
             x_a = x_b + 1
         vim.command("wincmd p")
 
@@ -288,7 +328,8 @@ class CoVimScope:
         vim.command('autocmd CursorMoved <buffer> py3 reactor.callFromThread(CoVim.fact.cursor_update)')
         vim.command('autocmd CursorMovedI <buffer> py3 reactor.callFromThread(CoVim.fact.buff_update)')
         vim.command('autocmd VimLeave * py3 CoVim.quit()')
-        vim.command("1new +setlocal\ stl=%!'CoVim-Collaborators'")
+        vim.command("1new +setlocal\\ stl=CoVim-Collaborators")
+        #vim.command("1new +setlocal stl=%!'CoVim-Collaborators'")
         self.buddylist = vim.current.buffer
         self.buddylist_window = vim.current.window
         vim.command("wincmd j")
