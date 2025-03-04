@@ -1,3 +1,6 @@
+# My Comments
+I installed manually (see "Install Manually" below)
+
 <img src="http://fredkschott.com/img/CoVim_Icon.png" width="46" height="46" /> CoVim
 ==========================
 Collaborative Editing for Vim (One of Vim's [most requested features](http://www.vim.org/sponsor/vote_results.php)) is finally here! Think Google Docs for Vim. 
