@@ -1,5 +1,6 @@
 # My Comments
 I installed manually (see "Install Manually" below)
+I always start a server by executing in the CLI
 
 <img src="http://fredkschott.com/img/CoVim_Icon.png" width="46" height="46" /> CoVim
 ==========================
