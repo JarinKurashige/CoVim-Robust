@@ -59,30 +59,6 @@ class CoVimProtocol(Protocol):
     def connectionMade(self):
         self.send(CoVim.username)
 
-    def are_decorators_balanced(self, data):
-        stack = []
-        pairs = {
-                ')': '(',
-                '}': '{',
-                ']': '[',
-                '"': '"',
-                "'": "'"
-        }
-        openers = set(pairs.values())
-        quotes = {'"', "'"}
-
-        for char in data:
-            if char in openers:
-                if char in quotes and stack and stack[-1] == char:
-                    stack.pop()
-                else:
-                    stack.append(char)
-            elif char in pairs:
-                if not stack or stack[-1] != pairs[char]:
-                    return False
-                stack.pop()
-        return True if not stack else False
-
     def dataReceived(self, data_string):
         def clean_data_string(d_s):
             bad_data = d_s.find("}{")
@@ -93,12 +69,14 @@ class CoVimProtocol(Protocol):
         if isinstance(data_string, bytes):
             data_string = data_string.decode('utf-8')
 
-        self.buffer += data_string
-        if not self.are_decorators_balanced(self.buffer):
-          return
-
         data_string = clean_data_string(data_string)
-        packet = json.loads(data_string)
+        
+        self.buffer += data_string
+        try:
+            packet = json.loads(self.buffer)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON. This should be expected due to TCP packets: {e}")
+            return
         if 'packet_type' in packet.keys():
             data = packet['data']
             if packet['packet_type'] == 'message':
